@@ -15,8 +15,8 @@ fn main() {
 
 	mut window := gui.window(
 		title:        'V-Guard — WireGuard Client'
-		width:        570
-		height:       680
+		width:        450
+		height:       700
 		cursor_blink: true // required for input fields and UI responsiveness
 		state:        &guard_ui.AppState{
 			tunnels:   saved_tunnels
