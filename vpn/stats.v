@@ -26,6 +26,13 @@ pub fn format_bytes(n u64) string {
 	}
 }
 
+// StatsResult encapsulates statistics along with potential system diagnostic messages
+pub struct StatsResult {
+pub mut:
+	stats     map[string]TunnelStats
+	error_msg string
+}
+
 // read_stats runs `wg show all dump` and parses per-interface byte counters.
 // Returns a map keyed by interface name.
 // `wg show all dump` format (tab-separated):
@@ -33,34 +40,85 @@ pub fn format_bytes(n u64) string {
 //   peer line      : <iface> <public_key> <preshared_key> <endpoint> <allowed_ips>
 //                    <latest_handshake> <transfer_rx> <transfer_tx> <persistent_keepalive>
 pub fn read_stats() map[string]TunnelStats {
+	res := read_stats_detailed()
+	return res.stats
+}
+
+// read_stats_detailed runs `wg show all dump` and captures errors if sudo or wg fail.
+pub fn read_stats_detailed() StatsResult {
 	mut result := map[string]TunnelStats{}
 
-	res := os.execute('sudo wg show all dump')
-	if res.exit_code != 0 {
-		return result
-	}
-
-	for line in res.output.split_into_lines() {
-		parts := line.split('\t')
-		// Peer lines have 9 fields; interface lines have 5
-		if parts.len < 9 {
-			continue
+	$if linux {
+		res := os.execute('sudo -n wg show all dump')
+		if res.exit_code != 0 {
+			out := res.output.trim_space()
+			mut msg := ''
+			if out.contains('a terminal is required') || out.contains('password')
+				|| out.contains('not permitted') {
+				msg = 'Statistiques indisponibles : sudo nécessite la configuration NOPASSWD pour "wg" dans /etc/sudoers.d/vguard.'
+			} else if out.contains('command not found') {
+				msg = 'Statistiques indisponibles : l\'outil "wg" est introuvable sur le système.'
+			}
+			return StatsResult{
+				stats:     result
+				error_msg: msg
+			}
 		}
-		iface := parts[0]
-		rx := parts[6].u64()
-		tx := parts[7].u64()
-		handshake := parts[5].u64() // Unix timestamp; 0 = never
 
-		mut stats := result[iface] or { TunnelStats{} }
-		stats.bytes_received += rx
-		stats.bytes_sent += tx
-		// Mark active if a handshake has occurred (non-zero timestamp)
-		if handshake > 0 {
-			stats.is_active = true
+		for line in res.output.split_into_lines() {
+			parts := line.split('\t')
+			if parts.len < 9 {
+				continue
+			}
+			iface := parts[0]
+			rx := parts[6].u64()
+			tx := parts[7].u64()
+			handshake := parts[5].u64()
+
+			mut stats := result[iface] or { TunnelStats{} }
+			stats.bytes_received += rx
+			stats.bytes_sent += tx
+			if handshake > 0 {
+				stats.is_active = true
+			}
+			result[iface] = stats
 		}
-		result[iface] = stats
+		return StatsResult{
+			stats:     result
+			error_msg: ''
+		}
+	} $else {
+		res := os.execute('wg show all dump')
+		if res.exit_code != 0 {
+			return StatsResult{
+				stats:     result
+				error_msg: ''
+			}
+		}
+
+		for line in res.output.split_into_lines() {
+			parts := line.split('\t')
+			if parts.len < 9 {
+				continue
+			}
+			iface := parts[0]
+			rx := parts[6].u64()
+			tx := parts[7].u64()
+			handshake := parts[5].u64()
+
+			mut stats := result[iface] or { TunnelStats{} }
+			stats.bytes_received += rx
+			stats.bytes_sent += tx
+			if handshake > 0 {
+				stats.is_active = true
+			}
+			result[iface] = stats
+		}
+		return StatsResult{
+			stats:     result
+			error_msg: ''
+		}
 	}
-	return result
 }
 
 // total_transferred sums rx + tx across all interfaces

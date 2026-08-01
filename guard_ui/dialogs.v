@@ -154,11 +154,58 @@ fn submit_edit_tunnel(mut w gui.Window) {
 	})
 }
 
+fn open_settings_dialog(mut w gui.Window) {
+	mut state := w.state[AppState]()
+	state.settings_form = SettingsForm{
+		refresh_interval_sec: state.settings.refresh_interval_sec.str()
+		auto_connect:         state.settings.auto_connect
+		auto_connect_tunnel:  state.settings.auto_connect_tunnel
+		show_notifications:   state.settings.show_notifications
+		theme:                state.settings.theme
+	}
+	state.dialog_mode = .settings
+	state.error_msg = ''
+}
+
+fn open_help_dialog(mut w gui.Window) {
+	mut state := w.state[AppState]()
+	state.dialog_mode = .help
+	state.error_msg = ''
+}
+
+fn submit_settings(mut w gui.Window) {
+	mut st := w.state[AppState]()
+	f := st.settings_form
+	interval := f.refresh_interval_sec.int()
+	if interval <= 0 {
+		st.error_msg = "L'intervalle doit être un nombre positif (ex: 15)."
+		return
+	}
+	st.settings = config.AppSettings{
+		refresh_interval_sec: interval
+		auto_connect:         f.auto_connect
+		auto_connect_tunnel:  f.auto_connect_tunnel
+		show_notifications:   f.show_notifications
+		theme:                f.theme
+	}
+	config.save_settings(st.settings)
+	close_dialog(mut w)
+	if st.settings.show_notifications {
+		w.toast(gui.ToastCfg{
+			body:     'Paramètres enregistrés'
+			severity: .success
+			duration: 3 * time.second
+		})
+	}
+}
+
 fn open_delete_confirm(idx int, tunnel_name string, mut w gui.Window) {
 	w.dialog(
 		dialog_type:  .confirm
 		title:        'Supprimer le tunnel'
-		body:         'Supprimer "${tunnel_name}" ? Cette action est irréversible.'
+		body:         'Supprimer "${tunnel_name}" ?\nCette action est irréversible.'
+		width:        380
+		max_width:    400
 		on_ok_yes:    fn [idx] (mut w gui.Window) {
 			delete_tunnel(idx, mut w)
 		}

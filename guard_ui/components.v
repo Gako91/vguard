@@ -14,6 +14,9 @@ const form_id_dns = u32(7568986)
 const form_id_cancel = u32(7568987)
 const form_id_ok = u32(7568988)
 
+const settings_id_interval = u32(7568990)
+const settings_id_auto_tunnel = u32(7568991)
+
 // -----------------------------------------------------------------------
 // Form input component
 // -----------------------------------------------------------------------
@@ -63,6 +66,9 @@ fn form_overlay_view(w_px int, h_px int, app &AppState, is_edit bool) gui.View {
 		}
 		spacing:      14
 		id_scroll:    9
+		on_click:     fn (_ &gui.Layout, mut e gui.Event, mut _ gui.Window) {
+			e.is_handled = true
+		}
 		content:      [
 			gui.text(text: title, text_style: text_style_bold()),
 			form_input('Nom *', app.form.name, 'ex: home-vpn', form_id_name, fn (_ &gui.Layout, s string, mut w gui.Window) {
@@ -99,6 +105,7 @@ fn form_overlay_view(w_px int, h_px int, app &AppState, is_edit bool) gui.View {
 			gui.text(
 				text:       app.error_msg
 				text_style: text_style_red()
+				mode:       .wrap
 			),
 			gui.row(
 				sizing:  gui.fill_fit
@@ -144,6 +151,282 @@ fn form_overlay_view(w_px int, h_px int, app &AppState, is_edit bool) gui.View {
 			close_dialog(mut w)
 		}
 		content:       [form_panel]
+	)
+}
+
+// -----------------------------------------------------------------------
+// Settings overlay panel
+// -----------------------------------------------------------------------
+
+fn settings_overlay_view(w_px int, h_px int, app &AppState) gui.View {
+	max_h := if h_px - 40 > 100 { f32(h_px - 40) } else { f32(100) }
+
+	notif_label := if app.settings_form.show_notifications {
+		'Notifications activées'
+	} else {
+		'Notifications désactivées'
+	}
+	auto_label := if app.settings_form.auto_connect {
+		'Connexion auto activée'
+	} else {
+		'Connexion auto désactivée'
+	}
+
+	settings_panel := gui.column(
+		width:        400
+		max_height:   max_h
+		sizing:       gui.fixed_fit
+		color:        color_panel
+		radius:       10
+		size_border:  1
+		color_border: color_border
+		padding:      gui.Padding{
+			top:    24
+			bottom: 24
+			left:   28
+			right:  28
+		}
+		spacing:      14
+		id_scroll:    10
+		on_click:     fn (_ &gui.Layout, mut e gui.Event, mut _ gui.Window) {
+			e.is_handled = true
+		}
+		content:      [
+			gui.text(text: "⚙ Paramètres de l'application", text_style: text_style_bold()),
+			form_input('Intervalle de rafraîchissement (secondes)',
+				app.settings_form.refresh_interval_sec, 'ex: 15', settings_id_interval, fn (_ &gui.Layout, s string, mut w gui.Window) {
+				mut st := w.state[AppState]()
+				st.settings_form.refresh_interval_sec = s
+			}),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(text: 'Notifications', text_style: text_style_muted()),
+					gui.row(
+						sizing:  gui.fill_fit
+						padding: gui.padding_none
+						spacing: 10
+						v_align: .middle
+						content: [
+							gui.switch(
+								select:   app.settings_form.show_notifications
+								on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+									mut st := w.state[AppState]()
+									st.settings_form.show_notifications = !st.settings_form.show_notifications
+								}
+							),
+							gui.text(text: notif_label, text_style: text_style_title()),
+						]
+					),
+				]
+			),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(
+						text:       'Connexion automatique au démarrage'
+						text_style: text_style_muted()
+					),
+					gui.row(
+						sizing:  gui.fill_fit
+						padding: gui.padding_none
+						spacing: 10
+						v_align: .middle
+						content: [
+							gui.switch(
+								select:   app.settings_form.auto_connect
+								on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+									mut st := w.state[AppState]()
+									st.settings_form.auto_connect = !st.settings_form.auto_connect
+								}
+							),
+							gui.text(text: auto_label, text_style: text_style_title()),
+						]
+					),
+				]
+			),
+			form_input('Tunnel pour connexion auto (Nom exact)',
+				app.settings_form.auto_connect_tunnel, 'ex: HomeVPN', settings_id_auto_tunnel, fn (_ &gui.Layout, s string, mut w gui.Window) {
+				mut st := w.state[AppState]()
+				st.settings_form.auto_connect_tunnel = s
+			}),
+			gui.text(
+				text:       app.error_msg
+				text_style: text_style_red()
+				mode:       .wrap
+			),
+			gui.row(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				h_align: .end
+				spacing: 10
+				content: [
+					gui.button(
+						content:  [
+							gui.text(text: 'Annuler'),
+						]
+						on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+							close_dialog(mut w)
+						}
+					),
+					gui.button(
+						content:  [
+							gui.text(text: 'Enregistrer'),
+						]
+						on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+							submit_settings(mut w)
+						}
+					),
+				]
+			),
+		]
+	)
+
+	return gui.column(
+		width:         w_px
+		height:        h_px
+		sizing:        gui.fixed_fixed
+		color:         color_overlay
+		float:         true
+		float_anchor:  .middle_center
+		float_tie_off: .middle_center
+		h_align:       .center
+		v_align:       .middle
+		padding:       gui.padding_none
+		on_click:      fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+			close_dialog(mut w)
+		}
+		content:       [settings_panel]
+	)
+}
+
+// -----------------------------------------------------------------------
+// Help / Guide overlay panel
+// -----------------------------------------------------------------------
+
+fn help_overlay_view(w_px int, h_px int, _ &AppState) gui.View {
+	max_h := if h_px - 40 > 100 { f32(h_px - 40) } else { f32(100) }
+
+	help_panel := gui.column(
+		width:        420
+		max_height:   max_h
+		sizing:       gui.fixed_fit
+		color:        color_panel
+		radius:       10
+		size_border:  1
+		color_border: color_border
+		padding:      gui.Padding{
+			top:    24
+			bottom: 24
+			left:   28
+			right:  28
+		}
+		spacing:      16
+		id_scroll:    11
+		on_click:     fn (_ &gui.Layout, mut e gui.Event, mut _ gui.Window) {
+			e.is_handled = true
+		}
+		content:      [
+			gui.text(text: '❓ Guide & Configuration V-Guard', text_style: text_style_bold()),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(
+						text:       '1. Importer un profil WireGuard (.conf)'
+						text_style: text_style_title()
+					),
+					gui.text(
+						text:       'Cliquez sur "Importer" pour sélectionner un fichier .conf standard. V-Guard extrait automatiquement l\'adresse IP, les clés, le point de terminaison (Endpoint) et les DNS.'
+						text_style: text_style_muted()
+						mode:       .wrap
+					),
+				]
+			),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(text: '2. Privilèges Linux / Sudo', text_style: text_style_title()),
+					gui.text(
+						text:       'Pour activer/désactiver les tunnels sans saisir votre mot de passe administrateur, ajoutez cette règle dans /etc/sudoers.d/vguard :'
+						text_style: text_style_muted()
+						mode:       .wrap
+					),
+					gui.text(
+						text:       'votre_user ALL=(ALL) NOPASSWD: /usr/bin/wg-quick, /usr/bin/wg'
+						text_style: text_style_bold()
+						mode:       .wrap
+					),
+				]
+			),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(
+						text:       '3. Chiffrement & Sécurité des clés'
+						text_style: text_style_title()
+					),
+					gui.text(
+						text:       'Vos clés privées sont chiffrées localement en AES-256 (CFB) avec un IV aléatoire dérivé de votre session système avant écriture sur le disque.'
+						text_style: text_style_muted()
+						mode:       .wrap
+					),
+				]
+			),
+			gui.column(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				spacing: 4
+				content: [
+					gui.text(text: 'À propos', text_style: text_style_title()),
+					gui.text(
+						text:       'V-Guard v1.0.0 — Client VPN WireGuard natif, ultra-léger et rapide développé en langage V.'
+						text_style: text_style_muted()
+						mode:       .wrap
+					),
+				]
+			),
+			gui.row(
+				sizing:  gui.fill_fit
+				padding: gui.padding_none
+				h_align: .end
+				spacing: 10
+				content: [
+					gui.button(
+						content:  [gui.text(text: 'Fermer')]
+						on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+							close_dialog(mut w)
+						}
+					),
+				]
+			),
+		]
+	)
+
+	return gui.column(
+		width:         w_px
+		height:        h_px
+		sizing:        gui.fixed_fixed
+		color:         color_overlay
+		float:         true
+		float_anchor:  .middle_center
+		float_tie_off: .middle_center
+		h_align:       .center
+		v_align:       .middle
+		padding:       gui.padding_none
+		on_click:      fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+			close_dialog(mut w)
+		}
+		content:       [help_panel]
 	)
 }
 

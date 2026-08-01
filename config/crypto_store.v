@@ -1,6 +1,8 @@
 module config
 
 import crypto.aes
+import crypto.cipher
+import crypto.rand
 import encoding.base64
 import os
 
@@ -14,6 +16,18 @@ fn derive_machine_key() []u8 {
 	mut key := []u8{len: 16, init: 0}
 	for i, b in raw.bytes() {
 		key[i % 16] ^= b
+	}
+	return key
+}
+
+// derive_machine_key_256 builds a deterministic 32-byte AES key for AES-256
+fn derive_machine_key_256() []u8 {
+	user := os.getenv('USER')
+	hostname := os.execute('hostname').output.trim_space()
+	raw := '${user}@${hostname}-vguard-key-v2-aes256'
+	mut key := []u8{len: 32, init: 0}
+	for i, b in raw.bytes() {
+		key[i % 32] ^= b
 	}
 	return key
 }
@@ -40,32 +54,50 @@ fn pkcs7_unpad(data []u8) []u8 {
 	return data[..data.len - pad_len]
 }
 
-// encrypt_key encrypts a plain-text WireGuard private key with AES-128 ECB
-// and returns a base64-encoded cipher string prefixed with "enc:".
-// If encryption fails for any reason, returns the original plain text.
+// encrypt_key encrypts a plain-text WireGuard private key with AES-256 CFB mode
+// and a 16-byte random IV. Returns a base64-encoded cipher string prefixed with "enc:v2:".
+// Fallback to raw string if random generation fails.
 pub fn encrypt_key(plain string) string {
 	if plain == '' {
 		return plain
 	}
 	// Don't double-encrypt
-	if plain.starts_with('enc:') {
+	if plain.starts_with('enc:') || plain.starts_with('enc:v2:') {
 		return plain
 	}
-	key := derive_machine_key()
+	key := derive_machine_key_256()
 	cipher_block := aes.new_cipher(key)
-	padded := pkcs7_pad(plain.bytes(), 16)
-	mut encrypted := []u8{len: padded.len}
-	// ECB mode: encrypt each 16-byte block independently
-	for i := 0; i + 16 <= padded.len; i += 16 {
-		cipher_block.encrypt(mut encrypted[i..i + 16], padded[i..i + 16])
-	}
-	return 'enc:' + base64.encode(encrypted)
+	iv := rand.bytes(16) or { return plain }
+	mut cfb := cipher.new_cfb_encrypter(cipher_block, iv)
+	plain_bytes := plain.bytes()
+	mut encrypted := []u8{len: plain_bytes.len}
+	cfb.xor_key_stream(mut encrypted, plain_bytes)
+
+	mut payload := []u8{cap: 16 + encrypted.len}
+	payload << iv
+	payload << encrypted
+	return 'enc:v2:' + base64.encode(payload)
 }
 
 // decrypt_key decrypts a value previously encrypted by encrypt_key.
-// If the value does not start with "enc:", it is returned unchanged
-// (backward compatibility with plain-text tunnels.json files).
+// Supports both "enc:v2:" (AES-256 CFB with random IV) and "enc:" (legacy AES-128 ECB).
+// If the value does not start with "enc:", it is returned unchanged.
 pub fn decrypt_key(stored string) string {
+	if stored.starts_with('enc:v2:') {
+		b64_part := stored[7..]
+		payload := base64.decode(b64_part)
+		if payload.len < 16 {
+			return stored
+		}
+		iv := payload[..16]
+		encrypted := payload[16..]
+		key := derive_machine_key_256()
+		cipher_block := aes.new_cipher(key)
+		mut cfb := cipher.new_cfb_decrypter(cipher_block, iv)
+		mut decrypted := []u8{len: encrypted.len}
+		cfb.xor_key_stream(mut decrypted, encrypted)
+		return decrypted.bytestr()
+	}
 	if !stored.starts_with('enc:') {
 		return stored // legacy plain-text value
 	}

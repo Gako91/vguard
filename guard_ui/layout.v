@@ -2,7 +2,6 @@ module guard_ui
 
 import gui
 import vpn
-import config
 
 // -----------------------------------------------------------------------
 // Header view
@@ -64,7 +63,11 @@ fn header_view(app &AppState) gui.View {
 								mode:       .wrap
 							),
 							gui.text(text: '·', text_style: text_style_muted()),
-							gui.text(text: 'Màj ${refresh_label}', text_style: text_style_muted(), mode: .wrap),
+							gui.text(
+								text:       'Màj ${refresh_label}'
+								text_style: text_style_muted()
+								mode:       .wrap
+							),
 						]
 					),
 				]
@@ -123,6 +126,48 @@ fn header_view(app &AppState) gui.View {
 				]
 				on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
 					open_new_dialog(mut w)
+				}
+			),
+			gui.button(
+				content:  [
+					gui.row(
+						padding: gui.padding_none
+						spacing: 4
+						v_align: .middle
+						content: [
+							gui.text(
+								text:       '⚙'
+								text_style: gui.TextStyle{
+									...gui.theme().b3
+									color: color_white
+								}
+							),
+						]
+					),
+				]
+				on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+					open_settings_dialog(mut w)
+				}
+			),
+			gui.button(
+				content:  [
+					gui.row(
+						padding: gui.padding_none
+						spacing: 4
+						v_align: .middle
+						content: [
+							gui.text(
+								text:       '?'
+								text_style: gui.TextStyle{
+									...gui.theme().b3
+									color: color_white
+								}
+							),
+						]
+					),
+				]
+				on_click: fn (_ &gui.Layout, mut _ gui.Event, mut w gui.Window) {
+					open_help_dialog(mut w)
 				}
 			),
 		]
@@ -234,14 +279,26 @@ pub fn main_view(window &gui.Window) gui.View {
 				left:   20
 				right:  20
 			}
-			content: [gui.text(text: app.error_msg, text_style: text_style_red())]
+			content: [
+				gui.text(
+					text:       app.error_msg
+					text_style: text_style_red()
+					mode:       .wrap
+				),
+			]
 		)
 	}
 	content << tunnel_list_view(app)
 
 	if app.dialog_mode != .none {
-		is_edit := app.dialog_mode == .edit_tunnel
-		content << form_overlay_view(w, h, app, is_edit)
+		if app.dialog_mode == .settings {
+			content << settings_overlay_view(w, h, app)
+		} else if app.dialog_mode == .help {
+			content << help_overlay_view(w, h, app)
+		} else {
+			is_edit := app.dialog_mode == .edit_tunnel
+			content << form_overlay_view(w, h, app, is_edit)
+		}
 	}
 
 	return gui.column(

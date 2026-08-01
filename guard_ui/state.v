@@ -14,6 +14,8 @@ pub enum DialogMode {
 	none
 	new_tunnel
 	edit_tunnel
+	settings
+	help
 }
 
 // NewTunnelForm holds the draft fields for the Nouveau / Éditer overlay
@@ -28,18 +30,30 @@ pub mut:
 	dns         string
 }
 
+// SettingsForm holds the draft fields for the Paramètres overlay
+pub struct SettingsForm {
+pub mut:
+	refresh_interval_sec string
+	auto_connect         bool
+	auto_connect_tunnel  string
+	show_notifications   bool
+	theme                string
+}
+
 // AppState holds the full runtime state of the application
 @[heap]
 pub struct AppState {
 pub mut:
-	tunnels      []config.WGConfig
-	connected    map[string]bool
-	stats        map[string]vpn.TunnelStats
-	error_msg    string
-	last_refresh time.Time
-	form         NewTunnelForm
-	dialog_mode  DialogMode
-	edit_idx     int // index of the tunnel being edited (-1 = none)
+	tunnels       []config.WGConfig
+	connected     map[string]bool
+	stats         map[string]vpn.TunnelStats
+	settings      config.AppSettings
+	error_msg     string
+	last_refresh  time.Time
+	form          NewTunnelForm
+	settings_form SettingsForm
+	dialog_mode   DialogMode
+	edit_idx      int // index of the tunnel being edited (-1 = none)
 }
 
 // -----------------------------------------------------------------------
@@ -52,8 +66,12 @@ fn save(state &AppState) {
 
 fn refresh_stats(mut w gui.Window) {
 	mut state := w.state[AppState]()
-	state.stats = vpn.read_stats()
+	stats_res := vpn.read_stats_detailed()
+	state.stats = stats_res.stats.clone()
 	state.last_refresh = time.now()
+	if stats_res.error_msg != '' && state.error_msg == '' {
+		state.error_msg = stats_res.error_msg
+	}
 	for name, _ in state.connected {
 		if s := state.stats[name] {
 			if !s.is_active {
@@ -65,11 +83,14 @@ fn refresh_stats(mut w gui.Window) {
 
 pub fn refresh_stats_anim(mut w gui.Window) {
 	refresh_stats(mut w)
-	w.toast(gui.ToastCfg{
-		body:     'Statistiques mises à jour'
-		severity: .info
-		duration: 2 * time.second
-	})
+	state := w.state[AppState]()
+	if state.settings.show_notifications {
+		w.toast(gui.ToastCfg{
+			body:     'Statistiques mises à jour'
+			severity: .info
+			duration: 2 * time.second
+		})
+	}
 }
 
 // -----------------------------------------------------------------------
@@ -89,22 +110,26 @@ fn toggle_tunnel(idx int, mut w gui.Window) {
 			return
 		}
 		state.connected[conf.name] = false
-		w.toast(gui.ToastCfg{
-			body:     'Tunnel "${conf.name}" déconnecté'
-			severity: .warning
-			duration: 3 * time.second
-		})
+		if state.settings.show_notifications {
+			w.toast(gui.ToastCfg{
+				body:     'Tunnel "${conf.name}" déconnecté'
+				severity: .warning
+				duration: 3 * time.second
+			})
+		}
 	} else {
 		vpn.activate_tunnel(conf) or {
 			state.error_msg = 'Erreur connexion : ${err.msg()}'
 			return
 		}
 		state.connected[conf.name] = true
-		w.toast(gui.ToastCfg{
-			body:     'Tunnel "${conf.name}" connecté'
-			severity: .success
-			duration: 3 * time.second
-		})
+		if state.settings.show_notifications {
+			w.toast(gui.ToastCfg{
+				body:     'Tunnel "${conf.name}" connecté'
+				severity: .success
+				duration: 3 * time.second
+			})
+		}
 	}
 	state.error_msg = ''
 	refresh_stats(mut w)

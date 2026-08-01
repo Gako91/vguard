@@ -44,13 +44,13 @@ v run src/main.v
 
 ### En mode Production (Gestion de mémoire optimisée)
 
-Le langage V intègre une option appelée **Autofree** qui libère automatiquement la mémoire sans utiliser de Garbage Collector. Pour compiler un binaire final ultra-optimisé, utilisez :
+Pour compiler un binaire final optimisé en mode production :
 
 ```bash
-v -prod -autofree -o vguard main.v
+v -prod -o vguard main.v
 ```
 
-_Note : Sur Linux, le binaire généré `vguard` sera autonome et prêt à être exécuté._
+_Note : Sur Linux, le binaire autonome généré `vguard` ne pèse qu'environ 4 Mo._
 
 ---
 

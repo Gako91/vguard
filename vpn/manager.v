@@ -6,9 +6,14 @@ import config
 // activate_tunnel calls the system command to bring the VPN tunnel up
 pub fn activate_tunnel(conf config.WGConfig) ! {
 	$if linux {
-		res := os.execute('sudo wg-quick up ${conf.name}')
+		res := os.execute('sudo -n wg-quick up ${conf.name}')
 		if res.exit_code != 0 {
-			return error('wg-quick up failed: ${res.output}')
+			out := res.output.trim_space()
+			if out.contains('a terminal is required') || out.contains('password')
+				|| out.contains('not permitted') {
+				return error('Privilèges sudo requis : Veuillez autoriser wg-quick sans mot de passe dans /etc/sudoers.d/vguard ou lancer vguard avec sudo.')
+			}
+			return error('Échec wg-quick up : ${out}')
 		}
 	} $else $if macos {
 		res := os.execute('wg-quick up ${conf.name}')
@@ -26,9 +31,14 @@ pub fn activate_tunnel(conf config.WGConfig) ! {
 // cut_tunnel calls the system command to bring the VPN tunnel down
 pub fn cut_tunnel(conf config.WGConfig) ! {
 	$if linux {
-		res := os.execute('sudo wg-quick down ${conf.name}')
+		res := os.execute('sudo -n wg-quick down ${conf.name}')
 		if res.exit_code != 0 {
-			return error('wg-quick down failed: ${res.output}')
+			out := res.output.trim_space()
+			if out.contains('a terminal is required') || out.contains('password')
+				|| out.contains('not permitted') {
+				return error('Privilèges sudo requis : Veuillez autoriser wg-quick sans mot de passe dans /etc/sudoers.d/vguard ou lancer vguard avec sudo.')
+			}
+			return error('Échec wg-quick down : ${out}')
 		}
 	} $else $if macos {
 		res := os.execute('wg-quick down ${conf.name}')
